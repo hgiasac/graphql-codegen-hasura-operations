@@ -1,0 +1,26 @@
+{
+  "name": "graphql-codegen-hasura-operations",
+  "version": "0.0.1-alpha.1",
+  "description": "A graphql codegen plugin for hasura operation generation",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "graphql",
+    "codegen",
+    "hasura"
+  ],
+  "author": "Toan Nguyen",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.7.3",
+    "typescript": "^4.7.4"
+  },
+  "dependencies": {
+    "@graphql-codegen/plugin-helpers": "^2.6.2",
+    "@types/lodash": "^4.14.182",
+    "graphql": "^16.5.0",
+    "lodash": "^4.17.21"
+  }
+}
