@@ -1,0 +1,12 @@
+overwrite: true
+schema:
+  - https://localhost:8080/v1/graphql:
+      headers:
+        x-hasura-admin-secret: hasura
+generates:
+  ./output/test.graphql:
+    plugins:
+      - dist/index.js
+    config:
+      tables: ["account", "role"]
+      maxDepth: 2
