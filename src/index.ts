@@ -19,6 +19,7 @@ import {
   GraphQLArgument,
   GraphQLList,
   isOutputType,
+  getNamedType,
 } from "graphql";
 import { extname } from "path";
 import { snake, camel } from "radash";
@@ -205,6 +206,22 @@ export type HasuraGraphQLConfig = {
    */
   subscriptionOperationNamePrefix?: string;
   /**
+   * @description Hide variables with configured argument suffixes
+   * @default []
+   *
+   * @exampleMarkdown
+   * ```yaml {7}
+   * schema: http://localhost:3000/graphql
+   * generates:
+   *   schema.graphql:
+   *     plugins:
+   *       - graphql-codegen-hasura-operations
+   *     config:
+   *       disableArgSuffixes: ["on_conflict"]
+   * ```
+   */
+  disableArgSuffixes?: string[];
+  /**
    * @description Set to false to disable sorting
    * @default true
    */
@@ -240,6 +257,7 @@ export const plugin: PluginFunction<HasuraGraphQLConfig> = async (
     commentDescriptions,
     enableSubfieldArgs,
     disableFragments,
+    disableArgSuffixes,
   }
 ): Promise<string> => {
   const transformedSchemaAndAst = transformSchemaAST(schema, {
@@ -252,6 +270,7 @@ export const plugin: PluginFunction<HasuraGraphQLConfig> = async (
     ? printFragmentTypes(tables, transformedSchemaAndAst.schema, {
         maxDepth,
         enableSubfieldArgs,
+        disableArgSuffixes,
       })
     : {};
 
@@ -268,22 +287,8 @@ export const plugin: PluginFunction<HasuraGraphQLConfig> = async (
       enableSubfieldArgs,
       disableFragments,
       fragmentTypes,
+      disableArgSuffixes,
     }),
-    // ...printOperations(
-    //   "query",
-    //   transformedSchemaAndAst.schema.getQueryType().getFields(),
-    //   { prefix: queryOperationNamePrefix, maxDepth }
-    // ),
-    // ...printOperations(
-    //   "mutation",
-    //   transformedSchemaAndAst.schema.getMutationType().getFields(),
-    //   { prefix: mutationOperationNamePrefix, maxDepth }
-    // ),
-    // ...printOperations(
-    //   "subscription",
-    //   transformedSchemaAndAst.schema.getSubscriptionType().getFields(),
-    //   { prefix: subscriptionOperationNamePrefix, maxDepth }
-    // ),
   ]
     .filter(Boolean)
     .join("\n");
@@ -314,6 +319,10 @@ export const validate: PluginValidateFn<any> = async (
       `disableOperationTypes allow "query", "mutation" and "subscription" only`
     );
   }
+
+  if (_config.maxDepth && _config.maxDepth <= 0) {
+    throw new Error(`maxDepth must be larger than 0`);
+  }
 };
 
 const transformSchemaAST = (
@@ -337,10 +346,30 @@ const transformSchemaAST = (
   };
 };
 
+const buildModelTypeNameFromSuffixes = (
+  modelName: string,
+  suffixes: string[]
+): string[] => {
+  return (suffixes ?? []).flatMap((suffix) => {
+    const argType = `${modelName}_${suffix}`;
+    return [argType, camel(argType)];
+  });
+};
+
+type PrintFragmentTypesOptions = {
+  maxDepth: number;
+  enableSubfieldArgs: boolean;
+  disableArgSuffixes: string[];
+};
+
 const printFragmentTypes = (
   tables: string[],
   schema: GraphQLSchema,
-  { maxDepth, enableSubfieldArgs }
+  {
+    maxDepth,
+    enableSubfieldArgs,
+    disableArgSuffixes,
+  }: PrintFragmentTypesOptions
 ): FragmentMap => {
   return tables.reduce((acc, table) => {
     const type = schema.getType(table);
@@ -349,6 +378,11 @@ const printFragmentTypes = (
     }
 
     const alias = capitalCase(table);
+    const disabledArgs = buildModelTypeNameFromSuffixes(
+      table,
+      disableArgSuffixes
+    );
+
     const output = printOutputField(
       {
         name: alias,
@@ -361,6 +395,7 @@ const printFragmentTypes = (
         enableSubfieldArgs,
         disableFragments: false,
         fragmentTypes: {},
+        disabledArgs,
       }
     );
 
@@ -375,16 +410,27 @@ const printFragmentTypes = (
   }, {});
 };
 
+type PrintOperationContentOptions = {
+  isSubfield: boolean;
+  maxDepth: number;
+  parents?: Partial<GraphQLField<any, any, any>>[];
+  enableSubfieldArgs: boolean;
+  disableFragments: boolean;
+  disabledArgs: string[];
+  fragmentTypes: FragmentMap;
+};
+
 const printOperationContent = (
   field: Partial<GraphQLField<any, any, any>>,
   {
     isSubfield = false,
     maxDepth,
-    parents = [] as Partial<GraphQLField<any, any, any>>[],
+    parents = [],
     enableSubfieldArgs,
     disableFragments,
     fragmentTypes,
-  }
+    disabledArgs,
+  }: PrintOperationContentOptions
 ): PrintGraphQLOutput => {
   const output = printOutputField(
     {
@@ -398,6 +444,7 @@ const printOperationContent = (
       enableSubfieldArgs,
       disableFragments,
       fragmentTypes,
+      disabledArgs,
     }
   );
 
@@ -406,9 +453,21 @@ const printOperationContent = (
       ? v.name
       : `${[...parents.map((p) => p.name), field.name].join("_")}_${v.name}`;
 
-  const requiredArgs = (field.args || []).filter(
-    (arg) => !isSubfield || enableSubfieldArgs || isNonNullType(arg.type)
-  );
+  const requiredArgs = (field.args || []).filter((arg) => {
+    const typeName = getNamedType(arg.type).name;
+    if (isNonNullType(arg.type)) {
+      if (disabledArgs.includes(typeName)) {
+        throw new Error(
+          `The argument ${typeName} is required but in the disabled args list`
+        );
+      }
+
+      return true;
+    }
+    return (
+      !disabledArgs.includes(typeName) && (!isSubfield || enableSubfieldArgs)
+    );
+  });
 
   const argString = requiredArgs
     .map((v) => `${v.name}: $${buildArgVariableName(v)}`)
@@ -437,6 +496,10 @@ const printOperationContent = (
   };
 };
 
+type PrintCrudOperationOptions = Omit<HasuraGraphQLConfig, "tables"> & {
+  fragmentTypes: FragmentMap;
+};
+
 const printCrudOperations = (
   tables: string[],
   schema: GraphQLSchema,
@@ -451,7 +514,8 @@ const printCrudOperations = (
     enableSubfieldArgs,
     disableFragments,
     fragmentTypes,
-  }
+    disableArgSuffixes,
+  }: PrintCrudOperationOptions
 ): string[] => {
   const queryFields = schema.getQueryType().getFields();
   const mutationFields = schema.getMutationType().getFields();
@@ -481,6 +545,10 @@ const printCrudOperations = (
     const deleteByPkFieldNameCamelCase = camel(deleteByPkFieldName);
     const streamFieldNameCamelCase = camel(streamFieldName);
 
+    const disabledArgs = buildModelTypeNameFromSuffixes(
+      table,
+      disableArgSuffixes
+    );
     const queries = [];
 
     if (
@@ -502,6 +570,7 @@ const printCrudOperations = (
           enableSubfieldArgs,
           disableFragments,
           fragmentTypes,
+          disabledArgs,
         });
         const args = printOperationArgs(getContent.args);
         queries.push(`query ${queryOperationNamePrefix || ""}${capitalCase(
@@ -523,6 +592,7 @@ ${printIndent(getContent.query, 1)}
             enableSubfieldArgs,
             disableFragments,
             fragmentTypes,
+            disabledArgs,
           })
         );
       }
@@ -535,6 +605,7 @@ ${printIndent(getContent.query, 1)}
             enableSubfieldArgs,
             disableFragments,
             fragmentTypes,
+            disabledArgs,
           })
         );
       }
@@ -561,6 +632,7 @@ ${printIndent(getContent.query, 1)}
             enableSubfieldArgs,
             disableFragments,
             fragmentTypes,
+            disabledArgs: [],
           })
         );
       }
@@ -573,6 +645,7 @@ ${printIndent(getContent.query, 1)}
             enableSubfieldArgs,
             disableFragments,
             fragmentTypes,
+            disabledArgs,
           })
         );
       }
@@ -585,6 +658,7 @@ ${printIndent(getContent.query, 1)}
             enableSubfieldArgs,
             disableFragments,
             fragmentTypes,
+            disabledArgs,
           })
         );
       }
@@ -594,6 +668,17 @@ ${printIndent(getContent.query, 1)}
       !disableOperationTypes?.length ||
       !disableOperationTypes.includes("mutation")
     ) {
+      const mutationManyNames = [
+        insertFieldName,
+        insertFieldNameCamelCase,
+        updateFieldName,
+        updateFieldNameCamelCase,
+        updateManyFieldName,
+        updateManyFieldNameCamelCase,
+        deleteFieldName,
+        deleteFieldNameCamelCase,
+      ];
+
       const mutationQueries = [
         insertFieldName,
         insertFieldNameCamelCase,
@@ -601,10 +686,10 @@ ${printIndent(getContent.query, 1)}
         insertOneFieldNameCamelCase,
         updateFieldName,
         updateFieldNameCamelCase,
-        updateByPkFieldName,
-        updateByPkFieldNameCamelCase,
         updateManyFieldName,
         updateManyFieldNameCamelCase,
+        updateByPkFieldName,
+        updateByPkFieldNameCamelCase,
         deleteFieldName,
         deleteFieldNameCamelCase,
         deleteByPkFieldName,
@@ -615,10 +700,13 @@ ${printIndent(getContent.query, 1)}
         .map((f) =>
           printOperation("mutation", f, {
             prefix: mutationOperationNamePrefix,
-            maxDepth,
+            maxDepth: mutationManyNames.includes(f.name)
+              ? maxDepth + 1
+              : maxDepth,
             enableSubfieldArgs,
             disableFragments,
             fragmentTypes,
+            disabledArgs,
           })
         );
 
@@ -639,10 +727,24 @@ const printOperationArgs = (args: readonly GraphQLArgument[]) =>
     ? ""
     : `(${args.map((v) => `$${v.name}: ${v.type.toString()}`).join(", ")})`;
 
+type PrintOperationOptions = Omit<
+  PrintOperationContentOptions,
+  "isSubfield"
+> & {
+  prefix: string;
+};
+
 const printOperation = (
   operationType: "query" | "mutation" | "subscription",
   field: Partial<GraphQLField<any, any>>,
-  { prefix = "", maxDepth, enableSubfieldArgs, disableFragments, fragmentTypes }
+  {
+    prefix = "",
+    maxDepth,
+    enableSubfieldArgs,
+    disableFragments,
+    fragmentTypes,
+    disabledArgs,
+  }: PrintOperationOptions
 ) => {
   const op = printOperationContent(field, {
     isSubfield: false,
@@ -650,6 +752,7 @@ const printOperation = (
     enableSubfieldArgs,
     disableFragments,
     fragmentTypes,
+    disabledArgs,
   });
   const args = printOperationArgs(op.args);
 
@@ -658,16 +761,24 @@ ${printIndent(op.query, 1)}
 }`;
 };
 
+type PrintOutputFieldOptions = Omit<
+  PrintOperationContentOptions,
+  "isSubfield"
+> & {
+  hideName?: boolean;
+};
+
 const printOutputField = (
   field: Partial<GraphQLField<any, any>>,
   {
     maxDepth,
-    parents = [] as Partial<GraphQLField<any, any, any>>[],
+    parents = [],
     hideName = false,
     enableSubfieldArgs,
     disableFragments,
-    fragmentTypes = {} as FragmentMap,
-  }
+    fragmentTypes = {},
+    disabledArgs,
+  }: PrintOutputFieldOptions
 ): PrintGraphQLOutput => {
   if (
     parents.some(
@@ -689,6 +800,7 @@ const printOutputField = (
       enableSubfieldArgs,
       disableFragments,
       fragmentTypes,
+      disabledArgs,
     });
   }
 
@@ -705,6 +817,7 @@ const printOutputField = (
         enableSubfieldArgs,
         disableFragments,
         fragmentTypes,
+        disabledArgs,
       }
     );
   }
@@ -736,6 +849,7 @@ const printOutputField = (
           enableSubfieldArgs,
           disableFragments,
           fragmentTypes,
+          disabledArgs,
         });
         args = args.concat(output.args);
         return output.query;
@@ -770,6 +884,7 @@ ${[
         enableSubfieldArgs,
         disableFragments,
         fragmentTypes,
+        disabledArgs,
       }
     );
     args = args.concat(output.args);
@@ -796,6 +911,7 @@ ${Object.values(field.type.getFields())
       enableSubfieldArgs,
       disableFragments,
       fragmentTypes,
+      disabledArgs,
     });
     args = args.concat(output.args);
     return printIndent(output.query, 1);
