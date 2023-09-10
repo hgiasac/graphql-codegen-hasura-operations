@@ -1,6 +1,6 @@
 {
   "name": "graphql-codegen-hasura-operations",
-  "version": "0.0.1-alpha.4",
+  "version": "0.0.1-alpha.5",
   "description": "A graphql codegen plugin for hasura operation generation",
   "main": "dist/index.js",
   "scripts": {
