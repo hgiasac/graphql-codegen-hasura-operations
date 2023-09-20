@@ -18,12 +18,12 @@
   "license": "MIT",
   "devDependencies": {
     "@graphql-codegen/cli": "^5.0.0",
-    "@types/node": "^20.5.9",
+    "@types/node": "^20.6.3",
     "typescript": "^5.2.2"
   },
   "dependencies": {
     "@graphql-codegen/plugin-helpers": "^5.0.1",
-    "graphql": "^16.8.0",
+    "graphql": "^16.8.1",
     "radash": "^11.0.0"
   }
 }
