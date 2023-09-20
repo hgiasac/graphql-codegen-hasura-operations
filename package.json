@@ -1,11 +1,12 @@
 {
   "name": "graphql-codegen-hasura-operations",
-  "version": "0.0.1-alpha.3",
+  "version": "0.0.1-alpha.5",
   "description": "A graphql codegen plugin for hasura operation generation",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "generate-example": "graphql-codegen --config codegen.yml",
+    "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -17,12 +18,12 @@
   "license": "MIT",
   "devDependencies": {
     "@graphql-codegen/cli": "^5.0.0",
-    "@types/node": "^20.5.9",
+    "@types/node": "^20.6.3",
     "typescript": "^5.2.2"
   },
   "dependencies": {
     "@graphql-codegen/plugin-helpers": "^5.0.1",
-    "graphql": "^16.8.0",
+    "graphql": "^16.8.1",
     "radash": "^11.0.0"
   }
 }
