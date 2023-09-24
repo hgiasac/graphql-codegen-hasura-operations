@@ -19,6 +19,7 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "resolveJsonModule": true,
+    "strictNullChecks": true,
     "skipLibCheck": true
   }
 }

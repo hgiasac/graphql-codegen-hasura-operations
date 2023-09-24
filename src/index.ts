@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
 import {
   getCachedDocumentNodeFromSchema,
   PluginFunction,
@@ -48,7 +49,7 @@ export type HasuraGraphQLConfig = {
    */
   commentDescriptions?: boolean;
   /**
-   * @description Set the list of table for crud operations
+   * @description Set the list of models for crud operations
    *
    * @exampleMarkdown
    * ```yaml {7}
@@ -58,10 +59,10 @@ export type HasuraGraphQLConfig = {
    *     plugins:
    *       - graphql-codegen-hasura-operations
    *     config:
-   *       tables: ['user', 'role']
+   *       models: ['user', 'role']
    * ```
    */
-  tables?: string[];
+  models?: string[];
   /**
    * @description Set the list of operation types that you want to disable
    * @default false
@@ -77,7 +78,7 @@ export type HasuraGraphQLConfig = {
    *       disableOperationTypes: ['subscription']
    * ```
    */
-  disableOperationTypes?: Array<"query" | "mutation" | "subscription">;
+  disableOperationTypes?: ("query" | "mutation" | "subscription")[];
   /**
    * @description Set to true if you don't want to generating fragments returning types
    * @default false
@@ -93,7 +94,7 @@ export type HasuraGraphQLConfig = {
    *       disableFragments: true
    * ```
    */
-  disableFragments?: boolean;
+  disableFragments: boolean;
   /**
    * @description Set to true if you don't want to generate pagination queries
    * @default false
@@ -109,7 +110,7 @@ export type HasuraGraphQLConfig = {
    *       disablePagination: true
    * ```
    */
-  disablePagination?: boolean;
+  disablePagination: boolean;
   /**
    * @description Set to true if you want to generate subfield arguments
    * @default false
@@ -125,7 +126,7 @@ export type HasuraGraphQLConfig = {
    *       enableSubfieldArgs: true
    * ```
    */
-  enableSubfieldArgs?: boolean;
+  enableSubfieldArgs: boolean;
   /**
    * @description Set the suffix for pagination operation name
    * @default Pagination
@@ -141,7 +142,7 @@ export type HasuraGraphQLConfig = {
    *       paginationSuffix: Pagination
    * ```
    */
-  paginationSuffix?: string;
+  paginationSuffix: string;
   /**
    * @description Set the max depth of nested objects
    * @default 1
@@ -157,7 +158,7 @@ export type HasuraGraphQLConfig = {
    *       maxDepth: 1
    * ```
    */
-  maxDepth?: number;
+  maxDepth: number;
   /**
    * @description Set the prefix for query operation name
    * @default Get
@@ -173,7 +174,7 @@ export type HasuraGraphQLConfig = {
    *       queryOperationNamePrefix: Get
    * ```
    */
-  queryOperationNamePrefix?: string;
+  queryOperationNamePrefix: string;
   /**
    * @description Set the prefix for mutation operation name
    *
@@ -188,7 +189,7 @@ export type HasuraGraphQLConfig = {
    *       mutationOperationNamePrefix: Mutate
    * ```
    */
-  mutationOperationNamePrefix?: string;
+  mutationOperationNamePrefix: string;
   /**
    * @description Set the prefix for subscription operation name
    * @default Subscribe
@@ -204,7 +205,7 @@ export type HasuraGraphQLConfig = {
    *       subscriptionOperationNamePrefix: Subscribe
    * ```
    */
-  subscriptionOperationNamePrefix?: string;
+  subscriptionOperationNamePrefix: string;
   /**
    * @description Hide variables with configured argument suffixes
    * @default []
@@ -221,9 +222,61 @@ export type HasuraGraphQLConfig = {
    * ```
    */
   disableArgSuffixes?: string[];
+
+  /**
+   * @description Hide fields of the model
+   * @default []
+   *
+   * @exampleMarkdown
+   * ```yaml {7}
+   * schema: http://localhost:3000/graphql
+   * generates:
+   *   schema.graphql:
+   *     plugins:
+   *       - graphql-codegen-hasura-operations
+   *     config:
+   *       disableFields: ["updated_at"]
+   * ```
+   */
+  disableFields: string[];
+
+  /**
+   * @description Hide fields which contains prefix terms of the model
+   * @default []
+   *
+   * @exampleMarkdown
+   * ```yaml {7}
+   * schema: http://localhost:3000/graphql
+   * generates:
+   *   schema.graphql:
+   *     plugins:
+   *       - graphql-codegen-hasura-operations
+   *     config:
+   *       disableFieldPrefixes: ["updated_"]
+   * ```
+   */
+  disableFieldPrefixes: string[];
+
+  /**
+   * @description Hide fields which contains suffix terms of the model
+   * @default []
+   *
+   * @exampleMarkdown
+   * ```yaml {7}
+   * schema: http://localhost:3000/graphql
+   * generates:
+   *   schema.graphql:
+   *     plugins:
+   *       - graphql-codegen-hasura-operations
+   *     config:
+   *       disableFieldSuffixes: ["_aggregate"]
+   * ```
+   */
+  disableFieldSuffixes: string[];
+
   /**
    * @description Set to false to disable sorting
-   * @default true
+   * @default false
    */
   sort?: boolean;
   federation?: boolean;
@@ -240,83 +293,94 @@ type FragmentMap = Record<
   { name: string; content: string; args: readonly GraphQLArgument[] }
 >;
 
-export const plugin: PluginFunction<HasuraGraphQLConfig> = async (
+export const plugin: PluginFunction<HasuraGraphQLConfig> = (
   schema: GraphQLSchema,
   _documents,
   {
     maxDepth = 1,
-    tables,
+    models = [],
     queryOperationNamePrefix = "Get",
     mutationOperationNamePrefix,
     subscriptionOperationNamePrefix = "Subscribe",
     paginationSuffix = "Pagination",
     disablePagination = false,
     disableOperationTypes,
-    sort = false,
-    federation,
-    commentDescriptions,
-    enableSubfieldArgs,
+    commentDescriptions = false,
+    enableSubfieldArgs = false,
     disableFragments,
-    disableArgSuffixes,
-  }
+    disableArgSuffixes = [],
+    disableFields = [],
+    disableFieldPrefixes = [],
+    disableFieldSuffixes = [],
+  },
 ): Promise<string> => {
   const transformedSchemaAndAst = transformSchemaAST(schema, {
-    sort: sort,
-    federation: federation,
-    commentDescriptions: commentDescriptions,
+    commentDescriptions,
   });
 
   const fragmentTypes = !disableFragments
-    ? printFragmentTypes(tables, transformedSchemaAndAst.schema, {
+    ? printFragmentTypes(models, transformedSchemaAndAst.schema, {
         maxDepth,
         enableSubfieldArgs,
         disableArgSuffixes,
+        disableFields,
+        disableFieldPrefixes,
+        disableFieldSuffixes,
       })
     : {};
 
-  return [
-    ...Object.values(fragmentTypes).map((f) => f.content),
-    ...printCrudOperations(tables, transformedSchemaAndAst.schema, {
-      maxDepth,
-      queryOperationNamePrefix,
-      mutationOperationNamePrefix,
-      subscriptionOperationNamePrefix,
-      paginationSuffix,
-      disablePagination,
-      disableOperationTypes,
-      enableSubfieldArgs,
-      disableFragments,
-      fragmentTypes,
-      disableArgSuffixes,
-    }),
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return Promise.resolve(
+    [
+      ...Object.values(fragmentTypes).map((f) => f.content),
+      ...printCrudOperations(models, transformedSchemaAndAst.schema, {
+        maxDepth,
+        queryOperationNamePrefix,
+        mutationOperationNamePrefix,
+        subscriptionOperationNamePrefix,
+        paginationSuffix,
+        disablePagination,
+        disableOperationTypes,
+        enableSubfieldArgs,
+        disableFragments,
+        fragmentTypes,
+        disableArgSuffixes,
+        disableFields,
+        disableFieldPrefixes,
+        disableFieldSuffixes,
+      }),
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
 };
 
-export const validate: PluginValidateFn<any> = async (
+export const validate: PluginValidateFn<HasuraGraphQLConfig> = (
   _schema: GraphQLSchema,
   _documents: Types.DocumentFile[],
   _config: HasuraGraphQLConfig,
   outputFile: string,
-  allPlugins: Types.ConfiguredPlugin[]
+  allPlugins: Types.ConfiguredPlugin[],
 ) => {
   const singlePlugin = allPlugins.length === 1;
 
   if (singlePlugin && extname(outputFile) !== ".graphql") {
     throw new Error(
-      `Plugin "hasura-graphql" requires extension to be ".graphql"!`
+      `Plugin "hasura-graphql" requires extension to be ".graphql"!`,
     );
+  }
+
+  if (!_config.models?.length) {
+    throw new Error("models are required");
   }
 
   if (
     _config.disableOperationTypes &&
     _config.disableOperationTypes.some(
-      (t) => !["query", "mutation", "subscription"].includes(t)
+      (t) => !["query", "mutation", "subscription"].includes(t),
     )
   ) {
     throw new Error(
-      `disableOperationTypes allow "query", "mutation" and "subscription" only`
+      `disableOperationTypes allow "query", "mutation" and "subscription" only`,
     );
   }
 
@@ -327,10 +391,12 @@ export const validate: PluginValidateFn<any> = async (
 
 const transformSchemaAST = (
   schema: GraphQLSchema,
-  config: { [key: string]: any }
+  config: {
+    commentDescriptions: boolean;
+  },
 ) => {
   let ast = getCachedDocumentNodeFromSchema(schema);
-  ast = config.disableDescriptions
+  ast = config.commentDescriptions
     ? visit(ast, {
         leave: (node) => ({
           ...node,
@@ -338,7 +404,7 @@ const transformSchemaAST = (
         }),
       })
     : ast;
-  schema = config.disableDescriptions ? buildASTSchema(ast) : schema;
+  schema = config.commentDescriptions ? buildASTSchema(ast) : schema;
 
   return {
     schema,
@@ -348,7 +414,7 @@ const transformSchemaAST = (
 
 const buildModelTypeNameFromSuffixes = (
   modelName: string,
-  suffixes: string[]
+  suffixes?: string[],
 ): string[] => {
   return (suffixes ?? []).flatMap((suffix) => {
     const argType = `${modelName}_${suffix}`;
@@ -360,6 +426,9 @@ type PrintFragmentTypesOptions = {
   maxDepth: number;
   enableSubfieldArgs: boolean;
   disableArgSuffixes: string[];
+  disableFields: string[];
+  disableFieldPrefixes: string[];
+  disableFieldSuffixes: string[];
 };
 
 const printFragmentTypes = (
@@ -369,18 +438,21 @@ const printFragmentTypes = (
     maxDepth,
     enableSubfieldArgs,
     disableArgSuffixes,
-  }: PrintFragmentTypesOptions
+    disableFields,
+    disableFieldPrefixes,
+    disableFieldSuffixes,
+  }: PrintFragmentTypesOptions,
 ): FragmentMap => {
   return tables.reduce((acc, table) => {
     const type = schema.getType(table);
-    if (!type || !isOutputType(type) || !isObjectType(type)) {
+    if (!isOutputType(type) || !isObjectType(type)) {
       return acc;
     }
 
     const alias = capitalCase(table);
     const disabledArgs = buildModelTypeNameFromSuffixes(
       table,
-      disableArgSuffixes
+      disableArgSuffixes,
     );
 
     const output = printOutputField(
@@ -396,7 +468,10 @@ const printFragmentTypes = (
         disableFragments: false,
         fragmentTypes: {},
         disabledArgs,
-      }
+        disableFields,
+        disableFieldPrefixes,
+        disableFieldSuffixes,
+      },
     );
 
     return {
@@ -413,15 +488,18 @@ const printFragmentTypes = (
 type PrintOperationContentOptions = {
   isSubfield: boolean;
   maxDepth: number;
-  parents?: Partial<GraphQLField<any, any, any>>[];
+  parents?: Partial<GraphQLField<unknown, unknown, unknown>>[];
   enableSubfieldArgs: boolean;
   disableFragments: boolean;
   disabledArgs: string[];
   fragmentTypes: FragmentMap;
+  disableFields: string[];
+  disableFieldPrefixes: string[];
+  disableFieldSuffixes: string[];
 };
 
 const printOperationContent = (
-  field: Partial<GraphQLField<any, any, any>>,
+  field: Partial<GraphQLField<unknown, unknown, unknown>>,
   {
     isSubfield = false,
     maxDepth,
@@ -430,7 +508,10 @@ const printOperationContent = (
     disableFragments,
     fragmentTypes,
     disabledArgs,
-  }: PrintOperationContentOptions
+    disableFields,
+    disableFieldPrefixes,
+    disableFieldSuffixes,
+  }: PrintOperationContentOptions,
 ): PrintGraphQLOutput => {
   const output = printOutputField(
     {
@@ -445,7 +526,10 @@ const printOperationContent = (
       disableFragments,
       fragmentTypes,
       disabledArgs,
-    }
+      disableFields,
+      disableFieldPrefixes,
+      disableFieldSuffixes,
+    },
   );
 
   const buildArgVariableName = (v: GraphQLArgument) =>
@@ -453,12 +537,12 @@ const printOperationContent = (
       ? v.name
       : `${[...parents.map((p) => p.name), field.name].join("_")}_${v.name}`;
 
-  const requiredArgs = (field.args || []).filter((arg) => {
+  const requiredArgs = (field.args ?? []).filter((arg) => {
     const typeName = getNamedType(arg.type).name;
     if (isNonNullType(arg.type)) {
       if (disabledArgs.includes(typeName)) {
         throw new Error(
-          `The argument ${typeName} is required but in the disabled args list`
+          `The argument ${typeName} is required but in the disabled args list`,
         );
       }
 
@@ -487,7 +571,7 @@ const printOperationContent = (
               : {
                   ...f,
                   name: buildArgVariableName(f),
-                }
+                },
           ),
           ...output.args,
         ]
@@ -515,11 +599,14 @@ const printCrudOperations = (
     disableFragments,
     fragmentTypes,
     disableArgSuffixes,
-  }: PrintCrudOperationOptions
+    disableFields,
+    disableFieldPrefixes,
+    disableFieldSuffixes,
+  }: PrintCrudOperationOptions,
 ): string[] => {
-  const queryFields = schema.getQueryType().getFields();
-  const mutationFields = schema.getMutationType().getFields();
-  const subscriptionFields = schema.getSubscriptionType().getFields();
+  const queryFields = schema.getQueryType()?.getFields();
+  const mutationFields = schema.getMutationType()?.getFields();
+  const subscriptionFields = schema.getSubscriptionType()?.getFields();
   return tables.flatMap((table) => {
     const fieldName = snake(table);
     const fieldByPkName = snake(`${fieldName}_by_pk`);
@@ -547,23 +634,20 @@ const printCrudOperations = (
 
     const disabledArgs = buildModelTypeNameFromSuffixes(
       table,
-      disableArgSuffixes
+      disableArgSuffixes,
     );
-    const queries = [];
+    const queries: string[] = [];
 
-    if (
-      !disableOperationTypes?.length ||
-      !disableOperationTypes.includes("query")
-    ) {
+    if (queryFields && !disableOperationTypes?.includes("query")) {
       const fieldGet =
-        queryFields[fieldName] || queryFields[fieldNameCamelCase];
+        queryFields[fieldName] ?? queryFields[fieldNameCamelCase];
       const fieldGetByPk =
-        queryFields[fieldByPkName] || queryFields[fieldByPkNameCamelCase];
+        queryFields[fieldByPkName] ?? queryFields[fieldByPkNameCamelCase];
       const fieldAggregate =
-        queryFields[aggregateFieldName] ||
+        queryFields[aggregateFieldName] ??
         queryFields[aggregateFieldNameCamelCase];
 
-      if (!disablePagination && fieldAggregate && fieldGet) {
+      if (!disablePagination && Boolean(fieldAggregate) && Boolean(fieldGet)) {
         const getContent = printOperationContent(fieldGet, {
           isSubfield: false,
           maxDepth,
@@ -571,10 +655,13 @@ const printCrudOperations = (
           disableFragments,
           fragmentTypes,
           disabledArgs,
+          disableFields,
+          disableFieldPrefixes,
+          disableFieldSuffixes,
         });
         const args = printOperationArgs(getContent.args);
-        queries.push(`query ${queryOperationNamePrefix || ""}${capitalCase(
-          fieldGet.name
+        queries.push(`query ${queryOperationNamePrefix ?? ""}${capitalCase(
+          fieldGet.name,
         )}${paginationSuffix}${args} {
 ${printIndent(getContent.query, 1)}
   ${fieldAggregate.name}(where: $where) {
@@ -593,7 +680,10 @@ ${printIndent(getContent.query, 1)}
             disableFragments,
             fragmentTypes,
             disabledArgs,
-          })
+            disableFields,
+            disableFieldPrefixes,
+            disableFieldSuffixes,
+          }),
         );
       }
 
@@ -606,14 +696,17 @@ ${printIndent(getContent.query, 1)}
             disableFragments,
             fragmentTypes,
             disabledArgs,
-          })
+            disableFields,
+            disableFieldPrefixes,
+            disableFieldSuffixes,
+          }),
         );
       }
     }
 
     if (
-      !disableOperationTypes?.length ||
-      !disableOperationTypes.includes("subscription")
+      subscriptionFields &&
+      !disableOperationTypes?.includes("subscription")
     ) {
       const fieldGet =
         subscriptionFields[fieldName] || subscriptionFields[fieldNameCamelCase];
@@ -633,7 +726,10 @@ ${printIndent(getContent.query, 1)}
             disableFragments,
             fragmentTypes,
             disabledArgs: [],
-          })
+            disableFields,
+            disableFieldPrefixes,
+            disableFieldSuffixes,
+          }),
         );
       }
 
@@ -646,7 +742,10 @@ ${printIndent(getContent.query, 1)}
             disableFragments,
             fragmentTypes,
             disabledArgs,
-          })
+            disableFields,
+            disableFieldPrefixes,
+            disableFieldSuffixes,
+          }),
         );
       }
 
@@ -659,15 +758,15 @@ ${printIndent(getContent.query, 1)}
             disableFragments,
             fragmentTypes,
             disabledArgs,
-          })
+            disableFields,
+            disableFieldPrefixes,
+            disableFieldSuffixes,
+          }),
         );
       }
     }
 
-    if (
-      !disableOperationTypes?.length ||
-      !disableOperationTypes.includes("mutation")
-    ) {
+    if (mutationFields && !disableOperationTypes?.includes("mutation")) {
       const mutationManyNames = [
         insertFieldName,
         insertFieldNameCamelCase,
@@ -707,7 +806,10 @@ ${printIndent(getContent.query, 1)}
             disableFragments,
             fragmentTypes,
             disabledArgs,
-          })
+            disableFields,
+            disableFieldPrefixes,
+            disableFieldSuffixes,
+          }),
         );
 
       queries.push(...mutationQueries);
@@ -715,7 +817,7 @@ ${printIndent(getContent.query, 1)}
 
     if (!queries.length) {
       throw new Error(
-        `table ${table} doesn't exist, or maybe the role doesn't have any permission`
+        `table ${table} doesn't exist, or maybe the role doesn't have any permission`,
       );
     }
     return queries;
@@ -736,7 +838,7 @@ type PrintOperationOptions = Omit<
 
 const printOperation = (
   operationType: "query" | "mutation" | "subscription",
-  field: Partial<GraphQLField<any, any>>,
+  field: Partial<GraphQLField<unknown, unknown>>,
   {
     prefix = "",
     maxDepth,
@@ -744,7 +846,10 @@ const printOperation = (
     disableFragments,
     fragmentTypes,
     disabledArgs,
-  }: PrintOperationOptions
+    disableFields,
+    disableFieldPrefixes,
+    disableFieldSuffixes,
+  }: PrintOperationOptions,
 ) => {
   const op = printOperationContent(field, {
     isSubfield: false,
@@ -753,10 +858,15 @@ const printOperation = (
     disableFragments,
     fragmentTypes,
     disabledArgs,
+    disableFields,
+    disableFieldPrefixes,
+    disableFieldSuffixes,
   });
   const args = printOperationArgs(op.args);
 
-  return `${operationType} ${prefix || ""}${capitalCase(field.name)}${args} {
+  return `${operationType} ${prefix || ""}${capitalCase(
+    field.name ?? "",
+  )}${args} {
 ${printIndent(op.query, 1)}
 }`;
 };
@@ -769,7 +879,7 @@ type PrintOutputFieldOptions = Omit<
 };
 
 const printOutputField = (
-  field: Partial<GraphQLField<any, any>>,
+  field: Partial<GraphQLField<unknown, unknown>>,
   {
     maxDepth,
     parents = [],
@@ -778,14 +888,21 @@ const printOutputField = (
     disableFragments,
     fragmentTypes = {},
     disabledArgs,
-  }: PrintOutputFieldOptions
+    disableFields,
+    disableFieldPrefixes,
+    disableFieldSuffixes,
+  }: PrintOutputFieldOptions,
 ): PrintGraphQLOutput => {
   if (
+    !field.name ||
+    disableFields.includes(field.name) ||
+    disableFieldPrefixes.some((prefix) => field.name!.startsWith(prefix)) ||
+    disableFieldSuffixes.some((suffix) => field.name!.endsWith(suffix)) ||
     parents.some(
       (p) =>
         p.name === field.name &&
         (p.type as GraphQLObjectType).name ===
-          (field.type as GraphQLObjectType).name
+          (field.type as GraphQLObjectType).name,
     ) ||
     parents.length > maxDepth
   ) {
@@ -801,6 +918,9 @@ const printOutputField = (
       disableFragments,
       fragmentTypes,
       disabledArgs,
+      disableFields,
+      disableFieldPrefixes,
+      disableFieldSuffixes,
     });
   }
 
@@ -818,7 +938,10 @@ const printOutputField = (
         disableFragments,
         fragmentTypes,
         disabledArgs,
-      }
+        disableFields,
+        disableFieldPrefixes,
+        disableFieldSuffixes,
+      },
     );
   }
 
@@ -827,7 +950,7 @@ const printOutputField = (
       return { query: "", args: [], isScalar: false };
     }
 
-    if (fragmentTypes && fragmentTypes[field.type.name]) {
+    if (fragmentTypes[field.type.name]) {
       const fragment = fragmentTypes[field.type.name];
       return {
         query: `${!hideName ? field.name : ""} {
@@ -838,9 +961,9 @@ const printOutputField = (
       };
     }
 
-    let args = [];
+    let args: GraphQLArgument[] = [];
     const innerQuery = Object.values(
-      (field.type as GraphQLObjectType).getFields()
+      (field.type as GraphQLObjectType).getFields(),
     )
       .map((f) => {
         const output = printOutputField(f, {
@@ -850,12 +973,16 @@ const printOutputField = (
           disableFragments,
           fragmentTypes,
           disabledArgs,
+          disableFields,
+          disableFieldPrefixes,
+          disableFieldSuffixes,
         });
         args = args.concat(output.args);
         return output.query;
       })
       .filter((s) => s.trim())
       .join("\n");
+
     return {
       query: innerQuery
         ? `${!hideName ? field.name : ""} {\n${printIndent(innerQuery, 1)}\n}`
@@ -866,7 +993,7 @@ const printOutputField = (
   }
 
   if (isUnionType(field.type)) {
-    let args = [];
+    let args: GraphQLArgument[] = [];
     const query = `{
 ${[
   "  __typename",
@@ -877,7 +1004,7 @@ ${[
         type: ty,
         args: [],
         description: "",
-      } as any,
+      },
       {
         maxDepth,
         parents: [...(parents || []), field],
@@ -885,7 +1012,10 @@ ${[
         disableFragments,
         fragmentTypes,
         disabledArgs,
-      }
+        disableFields,
+        disableFieldPrefixes,
+        disableFieldSuffixes,
+      },
     );
     args = args.concat(output.args);
     return `  ... on ${output.query}`;
@@ -900,7 +1030,7 @@ ${[
   }
 
   if (isInterfaceType(field.type)) {
-    let args = [];
+    let args: GraphQLArgument[] = [];
     const query = `{
   __typename
 ${Object.values(field.type.getFields())
@@ -912,6 +1042,9 @@ ${Object.values(field.type.getFields())
       disableFragments,
       fragmentTypes,
       disabledArgs,
+      disableFields,
+      disableFieldPrefixes,
+      disableFieldSuffixes,
     });
     args = args.concat(output.args);
     return printIndent(output.query, 1);
@@ -926,7 +1059,7 @@ ${Object.values(field.type.getFields())
   }
 
   return {
-    query: !hideName ? field.name : "",
+    query: !hideName ? field.name ?? "" : "",
     args: [],
     isScalar: true,
   };
@@ -960,5 +1093,5 @@ const capitalCase = (input: string): string =>
     .split(" ")
     .reduce(
       (acc, s) => acc + s.substring(0, 1).toUpperCase() + s.substring(1),
-      ""
+      "",
     );
